@@ -1,4 +1,4 @@
-# LLM for nanozyme activity knowledge distillation
+# nanoMINER: Multimodal Information Extraction for Nanomaterials
 
 This repository contains a cutting-edge multi-agent system that integrates large language models with multimodal analysis to extract crucial information on nanomaterials from research articles. 
 
