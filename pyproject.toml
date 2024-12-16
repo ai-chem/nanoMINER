@@ -6,7 +6,7 @@ authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "3.10.12"
+python = "3.12.7"
 openai = "^1.30.0"
 langchain = "^0.1.20"
 elasticsearch = "^8.7.0"
@@ -17,9 +17,10 @@ tiktoken = "^0.7.0"
 fastapi = {extras = ["all"], version = "^0.95.1"}
 sentence-transformers = "^2.2.2"
 chromadb = "^0.5.0"
-torch = { version = "2.2.2", source = "torch-cuda-12-1" }
-torchvision = { version = "0.17.2", source = "torch-cuda-12-1" }
-# torch = "^2.2.2"
+# torch = { version = "2.2.2", source = "torch-cuda-12-1" }
+# torchvision = { version = "0.17.2", source = "torch-cuda-12-1" }
+torch = "2.2.0"
+torchvision = "0.17.0"
 playwright = "^1.39.0"
 streamlit = "1.28.2"
 unstructured = "^0.11.6"
@@ -37,6 +38,7 @@ pymupdf = "^1.24.5"
 llama-index-multi-modal-llms-openai = "^0.1.6"
 llama-index = "^0.10.44"
 ultralytics = "^8.2.56"
+pillow = "<11.0.0"
 
 [[tool.poetry.source]]
 name = "torch-cpu"

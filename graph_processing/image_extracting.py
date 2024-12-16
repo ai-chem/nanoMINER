@@ -10,6 +10,7 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.multi_modal_llms.openai import OpenAIMultiModal
 from PIL import Image
 from ultralytics import YOLO
+from image_reasoning import extract_concentration_range
 
 # Загрузка переменных окружения из .env файла
 load_dotenv(override=True)
@@ -117,7 +118,7 @@ def pdf_analysis(pdf_path, yolo_model_path = None):
         images = process_images_with_yolo(images, yolo_model_path=YOLO_PATH)
 
     for i, image in enumerate(images):
-        description = analyze_image(image)
+        description = extract_concentration_range(image)
         descriptions[i] = description
 
     description_text = ""
