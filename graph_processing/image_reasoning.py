@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+from openai import OpenAI
 import json
 
 load_dotenv(override=True)
@@ -79,41 +80,6 @@ def extract_concentration_range(image) -> ImageAnalysis:
     - Lineweaver-Burk plots (1/v vs 1/[S])
     - Non-kinetic data
     - Images without nanozyme-related information
-    
-    Return structured data following the ImageAnalysis schema with these fields:
-    {
-        "image_type": "concentration_graph | kinetic_table | tem_image | other",
-        "nanozyme_properties": {
-            "formula": "Chemical formula",
-            "activity": "peroxidase | oxidase | etc",
-            "syngony": "Crystal system",
-            "size": {"length": float, "width": float, "depth": float},
-            "surface_chemistry": "Surface modification"
-        },
-        "concentration_data": [{
-            "reaction_type": "TMB+H2O2 | H2O2+TMB",
-            "c_min": float,
-            "c_max": float,
-            "co_substrate_concentration": float
-        }],
-        "kinetic_parameters": [{
-            "km": float,
-            "vmax": float,
-            "kcat": float
-        }],
-        "description": "Brief description of findings"
-    }
-    """
-    
-    query = """
-    Analyze this image and extract all relevant information about nanozymes, following these steps:
-    1. Identify the type of image
-    2. For graphs: extract concentration ranges and reaction details
-    3. For tables: extract kinetic parameters
-    4. For other images: extract nanozyme properties
-    5. Provide a brief description of what you found
-    
-    Return the data in JSON format matching the schema shown in the system prompt.
     """
     
     # Convert image to base64
@@ -124,32 +90,33 @@ def extract_concentration_range(image) -> ImageAnalysis:
         image.save(buffer, format="PNG")
         base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
     
-    # Initialize GPT-4V
-    llm = ChatOpenAI(model="gpt-4o", max_tokens=1024)
+    # Initialize OpenAI client
+    client = OpenAI()
     
     # Prepare message
-    message = HumanMessage(
-        content=[
-            {"type": "text", "text": query},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-            },
-        ]
-    )
-    
-    # Get response
-    response = llm.invoke([message])
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user", 
+            "content": [
+                {"type": "text", "text": "Analyze this image and extract all relevant information about nanozymes."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+            ]
+        }
+    ]
     
     try:
-        # Parse JSON response into ImageAnalysis object
-        analysis_dict = json.loads(response.content)
-        image_analysis = ImageAnalysis(**analysis_dict)
-        return image_analysis
+        # Get response with structured output
+        completion = client.beta.chat.completions.parse(
+            model="gpt-4o",
+            messages=messages,
+            response_format=ImageAnalysis
+        )
+        return completion
     except Exception as e:
         # If parsing fails, return a basic analysis indicating an error
         return ImageAnalysis(
             image_type="error",
-            description=f"Failed to parse image: {str(e)}. Raw response: {response.content}"
+            description=f"Failed to parse image: {str(e)}"
         )
 
