@@ -10,7 +10,7 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.multi_modal_llms.openai import OpenAIMultiModal
 from PIL import Image
 from ultralytics import YOLO
-from image_reasoning import extract_concentration_range
+from graph_processing.image_reasoning import extract_concentration_range
 
 # Загрузка переменных окружения из .env файла
 load_dotenv(override=True)
@@ -106,8 +106,12 @@ def process_images_with_yolo(images, model_path):
 
 # Функция для анализа PDF и получения описаний
 def pdf_analysis(pdf_path, yolo_model_path = None):
+    """
+    Analyze PDF file and extract structured information about nanozymes from images.
+    Returns a dictionary with analysis results for each page containing relevant information.
+    """
     image_pages = extract_image_pages(pdf_path)
-    descriptions = {}
+    analyses = {}
     images = []
 
     for page_num in image_pages:
@@ -118,11 +122,14 @@ def pdf_analysis(pdf_path, yolo_model_path = None):
         images = process_images_with_yolo(images, yolo_model_path=YOLO_PATH)
 
     for i, image in enumerate(images):
-        description = extract_concentration_range(image)
-        descriptions[i] = description
+        analysis = extract_concentration_range(image)
+        
+        # Only include pages with relevant nanozyme information
+        if analysis.image_type != "error" and (
+            analysis.concentration_data or 
+            analysis.kinetic_parameters or 
+            (analysis.nanozyme_properties and any(v is not None for v in analysis.nanozyme_properties.dict().values()))
+        ):
+            analyses[i] = analysis.dict()
 
-    description_text = ""
-    for page_num, description in descriptions.items():
-        description_text += f"Description for page {page_num}:\n{description}\n\n"
-
-    return description_text
+    return analyses

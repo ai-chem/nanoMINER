@@ -1,12 +1,14 @@
 import base64
 import io
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional, List, Union
 import fitz
 from PIL import Image
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+import json
 
 load_dotenv(override=True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -22,66 +24,110 @@ def pdf_page_to_base64(pdf_path: str, page_number: int) -> str:
     img.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-def extract_concentration_range(file_path: str, page_number: int) -> Dict[str, Tuple[float, float]]:
-    """
-    Extract C_min and C_max values from graphs in the PDF.
-    Returns a dictionary with reaction types as keys and (C_min, C_max) tuples as values.
-    """
-    base64_image = pdf_page_to_base64(file_path, page_number)
-    llm = ChatOpenAI(model="gpt-4o-2024-11-20", max_tokens=1024)
+class ConcentrationData(BaseModel):
+    reaction_type: str = Field(description="Type of reaction (e.g. TMB+H2O2, H2O2+TMB)")
+    c_min: float = Field(description="Minimum concentration value in mM")
+    c_max: float = Field(description="Maximum concentration value in mM")
+    co_substrate_concentration: Optional[float] = Field(None, description="Concentration of co-substrate in mM if specified")
 
+class KineticParameters(BaseModel):
+    km: Optional[float] = Field(None, description="Michaelis constant Km in mM")
+    vmax: Optional[float] = Field(None, description="Maximum reaction rate Vmax in mM/s")
+    kcat: Optional[float] = Field(None, description="Turnover number kcat in s^-1")
+
+class NanozymeProperties(BaseModel):
+    formula: Optional[str] = Field(None, description="Chemical formula of the nanozyme")
+    activity: Optional[str] = Field(None, description="Type of activity (peroxidase, oxidase, etc.)")
+    syngony: Optional[str] = Field(None, description="Crystal system")
+    size: Optional[Dict[str, float]] = Field(None, description="Size parameters in nm (length, width, depth or diameter)")
+    surface_chemistry: Optional[str] = Field(None, description="Surface modification")
+
+class ImageAnalysis(BaseModel):
+    image_type: str = Field(description="Type of image (concentration_graph, kinetic_table, tem_image, etc.)")
+    nanozyme_properties: Optional[NanozymeProperties] = Field(None, description="Properties of nanozyme if mentioned")
+    concentration_data: Optional[List[ConcentrationData]] = Field(None, description="Concentration data if present")
+    kinetic_parameters: Optional[List[KineticParameters]] = Field(None, description="Kinetic parameters if present")
+    description: str = Field(description="Brief description of what was found in the image")
+
+def extract_concentration_range(image) -> ImageAnalysis:
+    """
+    Analyze image and extract structured information about nanozyme properties, concentrations and kinetic parameters.
+    
+    The function uses GPT-4V to analyze various types of images (graphs, tables, TEM images) and returns structured data.
+    """
+    
     system_prompt = """
-    Analyze the velocity vs concentration graphs and extract the EXACT minimum (C_min) and maximum (C_max) concentration values from the ACTUAL DATA POINTS.
+    Analyze the image and extract information about nanozyme properties, concentrations and kinetic parameters.
     
-    Critical measurement rules:
-    1. Look at the actual experimental points (black squares/dots with error bars) on the graph
-    2. For EACH velocity vs concentration graph:
-       - Find the LEFTMOST experimental point - this is C_min
-       - Find the RIGHTMOST experimental point - this is C_max
-       - Pay special attention to points
-       - Include ALL visible data points
+    Pay attention to:
+    1. Type of image (concentration_graph, kinetic_table, tem_image, etc.)
+    2. For concentration graphs:
+       - Look for actual experimental points (dots/squares with error bars)
+       - Find leftmost (C_min) and rightmost (C_max) points on concentration axis
+       - Identify reaction type and co-substrate concentration
+       - Check if points at x=0 are present
+       - Note typical ranges: TMB (0-1.0 mM), H2O2 (0-100 mM)
+    3. For kinetic tables:
+       - Extract Km, Vmax, kcat values with units
+       - Match parameters to specific reaction types
+    4. For TEM/SEM/other images:
+       - Note nanozyme formula, activity type, crystal system
+       - Extract size parameters (length, width, depth, diameter)
+       - Note surface modifications if mentioned
     
-    Important details:
-    - Look carefully at the axis scale and grid lines
-    - Use proportional measurement for points between grid lines
-    - Include the full range of experimental points 
-    - Ignore Lineweaver-Burk plots (1/v vs 1/[S])
-    - Concentration can be expressed in mM, mmol/L, or μM (1 μM = 0.001 mM)
-
+    Ignore:
+    - Lineweaver-Burk plots (1/v vs 1/[S])
+    - Non-kinetic data
+    - Images without nanozyme-related information
     
-    Measurement process:
-    1. First identify the graph type by x-axis label:
-       - TMB concentration (mM) → TMB+H2O2 reaction
-       - H2O2 concentration (mM) → H2O2+TMB reaction
-    2. For each identified graph:
-       - Scan all points to find the rightmost one
-       - Measure exact positions using grid lines
-    3. Double-check all measurements
-    
-    Return all values in mM units.
+    Return structured data following the ImageAnalysis schema with these fields:
+    {
+        "image_type": "concentration_graph | kinetic_table | tem_image | other",
+        "nanozyme_properties": {
+            "formula": "Chemical formula",
+            "activity": "peroxidase | oxidase | etc",
+            "syngony": "Crystal system",
+            "size": {"length": float, "width": float, "depth": float},
+            "surface_chemistry": "Surface modification"
+        },
+        "concentration_data": [{
+            "reaction_type": "TMB+H2O2 | H2O2+TMB",
+            "c_min": float,
+            "c_max": float,
+            "co_substrate_concentration": float
+        }],
+        "kinetic_parameters": [{
+            "km": float,
+            "vmax": float,
+            "kcat": float
+        }],
+        "description": "Brief description of findings"
+    }
     """
-
-    query = f"""
-    {system_prompt}
     
-    For each velocity vs concentration graph (ignore Lineweaver-Burk plots), provide:
-    1. Reaction type based on x-axis label
-    2. C_min: EXACT x-coordinate of the LEFTMOST point
-    3. C_max: EXACT x-coordinate of the RIGHTMOST point
+    query = """
+    Analyze this image and extract all relevant information about nanozymes, following these steps:
+    1. Identify the type of image
+    2. For graphs: extract concentration ranges and reaction details
+    3. For tables: extract kinetic parameters
+    4. For other images: extract nanozyme properties
+    5. Provide a brief description of what you found
     
-    Format your response EXACTLY as follows (no additional text):
-
-    For H2O2+TMB reaction:
-    Reaction type: H2O2+TMB
-    C_min: [value] mM
-    C_max: [value] mM
-
-    For TMB+H2O2 reaction:
-    Reaction type: TMB+H2O2
-    C_min: [value] mM
-    C_max: [value] mM
+    Return the data in JSON format matching the schema shown in the system prompt.
     """
-
+    
+    # Convert image to base64
+    if isinstance(image, str):
+        base64_image = pdf_page_to_base64(image)
+    else:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    
+    # Initialize GPT-4V
+    llm = ChatOpenAI(model="gpt-4o", max_tokens=1024)
+    
+    # Prepare message
     message = HumanMessage(
         content=[
             {"type": "text", "text": query},
@@ -92,53 +138,18 @@ def extract_concentration_range(file_path: str, page_number: int) -> Dict[str, T
         ]
     )
     
-    print(f"Processing page {page_number} from file {file_path}")
-    print("Image successfully converted to base64")
-    print("Sending request to OpenAI...")
+    # Get response
     response = llm.invoke([message])
-    print("Got response from OpenAI")
-    print("Raw response:", response.content)
     
-    # Parse the response
-    result = {}
-    lines = response.content.split('\n')
-    print('lines', lines)
-    
-    current_type = None
-    current_c_min = None
-    current_c_max = None
-    
-    for line in lines:
-        line = line.strip()
-        if not line:  # Skip empty lines
-            continue
-            
-        if line.startswith('Reaction type:'):
-            # Если у нас есть предыдущий набор данных, сохраним его
-            if current_type and current_c_min is not None and current_c_max is not None:
-                result[current_type] = (current_c_min, current_c_max)
-            
-            current_type = line.split('Reaction type:')[1].strip()
-            current_c_min = None
-            current_c_max = None
-            
-        elif line.startswith('C_min:'):
-            try:
-                value = line.split('C_min:')[1].split('mM')[0].strip()
-                current_c_min = float(value)
-            except (ValueError, IndexError):
-                continue
-                
-        elif line.startswith('C_max:'):
-            try:
-                value = line.split('C_max:')[1].split('mM')[0].strip()
-                current_c_max = float(value)
-            except (ValueError, IndexError):
-                continue
-    
-    # Добавляем последний набор данных
-    if current_type and current_c_min is not None and current_c_max is not None:
-        result[current_type] = (current_c_min, current_c_max)
-    
-    return response
+    try:
+        # Parse JSON response into ImageAnalysis object
+        analysis_dict = json.loads(response.content)
+        image_analysis = ImageAnalysis(**analysis_dict)
+        return image_analysis
+    except Exception as e:
+        # If parsing fails, return a basic analysis indicating an error
+        return ImageAnalysis(
+            image_type="error",
+            description=f"Failed to parse image: {str(e)}. Raw response: {response.content}"
+        )
 
