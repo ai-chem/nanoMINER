@@ -10,7 +10,7 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.multi_modal_llms.openai import OpenAIMultiModal
 from PIL import Image
 from ultralytics import YOLO
-from graph_processing.image_reasoning import extract_concentration_range
+from graph_processing.image_reasoning import extract_concentration_range, extract_table_markdown
 
 # Загрузка переменных окружения из .env файла
 load_dotenv(override=True)
@@ -60,7 +60,7 @@ def analyze_image(image):
             "When encountering diagrams or non-relevant visual data (e.g., non-kinetic graphs or diagrams), label them as such and pass them for further analysis but do not attempt to extract concentrations from them."
             "If neither graphs nor tables are detected, the model should flag the image as potentially irrelevant to the kinetic analysis task and move to the next one. "
             "In case the image appears to be part of a different section of the study (e.g., materials, methods, or background information), mark it accordingly."
-            "Additionally, when working in conjunction with the main agent, ensure that any relevant kinetic context derived from the article’s text (e.g., nanoparticle type, specific formulas, or reaction conditions) is passed along. "
+            "Additionally, when working in conjunction with the main agent, ensure that any relevant kinetic context derived from the article's text (e.g., nanoparticle type, specific formulas, or reaction conditions) is passed along. "
             "Use this context to guide the search for specific kinetic information within graphs or tables. If kinetic parameters or related data (e.g., specific substrate concentrations or reaction rates) are not found, flag this as a missing data point and request further investigation."
             "For inappropriate or unusable images (e.g., 1/[H2O2] or 1/[substrate]), mark them as non-relevant to the current task and continue the analysis. Avoid graphs that use inverse concentrations or other less directly interpretable data."
         )
@@ -95,20 +95,26 @@ def process_images_with_yolo(images, model_path):
     model.to(device=device)
 
     processed_images = []
+    table_images = []
     results = model(images)
 
     for i, res in enumerate(results):
-        cropped_images = crop_images(images[i], res.boxes) 
-        processed_images.extend(cropped_images)
+        for box, cls in zip(res.boxes, res.boxes.cls):
+            cropped_image = crop_images(images[i], [box])[0]
+            if int(cls) == 1:  # Table class
+                table_images.append(cropped_image)
+            else:
+                processed_images.append(cropped_image)
 
-    return processed_images
+    return processed_images, table_images
 
 
 # Функция для анализа PDF и получения описаний
 def pdf_analysis(pdf_path, yolo_model_path = YOLO_PATH):
     """
-    Analyze PDF file and extract structured information about nanozymes from images.
-    Returns a dictionary with analysis results for each page containing relevant information.
+    Analyze PDF file and extract structured information about nanozymes from images
+    and convert tables to markdown.
+    Returns a dictionary with analysis results and table markdowns.
     """
     image_pages = extract_image_pages(pdf_path)
     images = []
@@ -116,22 +122,30 @@ def pdf_analysis(pdf_path, yolo_model_path = YOLO_PATH):
     for page_num in image_pages:
         image = get_page_image(pdf_path, page_num)
         images.append(image)
-    print('IMAGES_____',images)
-    print(yolo_model_path)
-    if yolo_model_path:
-        images = process_images_with_yolo(images, model_path=YOLO_PATH)
-        print('YOLO_________',images)
+
     analyses = []
-
-    for i, image in enumerate(images):
-        analysis = extract_concentration_range(image)
-        print('analysis',analysis)
-        # Only include pages with relevant nanozyme information
-        if analysis.image_type != "error" and (
-            analysis.concentration_data or 
-            analysis.kinetic_parameters or 
-            (analysis.nanozyme_properties and any(v is not None for v in analysis.nanozyme_properties.dict().values()))
-        ):
-            analyses.append(analysis.dict())
-
-    return analyses
+    tables = []
+    
+    if yolo_model_path:
+        graph_images, table_images = process_images_with_yolo(images, model_path=YOLO_PATH)
+        
+        # Process graphs
+        for image in graph_images:
+            analysis = extract_concentration_range(image)
+            if analysis.image_type != "error" and (
+                analysis.concentration_data or 
+                analysis.kinetic_parameters or 
+                (analysis.nanozyme_properties and any(v is not None for v in analysis.nanozyme_properties.dict().values()))
+            ):
+                analyses.append(analysis.dict())
+        
+        # Process tables
+        for table_image in table_images:
+            table_markdown = extract_table_markdown(table_image)
+            if table_markdown:
+                tables.append(table_markdown)
+    
+    return {
+        "analyses": analyses,
+        "tables": tables
+    }

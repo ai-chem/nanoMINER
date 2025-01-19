@@ -121,20 +121,21 @@ if files != [] and st.session_state["files"] != files:
 
     @tool("analyze_images")
     def analyze_images(file_name: str) -> str:
-        "Extracts the minimum (Cmin) and maximum (Cmax) substrate concentrations from kinetic data on pages including pictures and graphs. It uses GPT-4 to analyze images. Returns Cmin and Cmax for each page of the article and supplementary if provided. You should always use this tool because graphs and pictures may contain useful information and parameters."
-        images_dict = {}
+        "Extracts the minimum (Cmin) and maximum (Cmax) substrate concentrations from kinetic data on pages including pictures and graphs. Also extracts tables in markdown format. It uses GPT-4 to analyze images. Returns Cmin and Cmax for each page of the article and supplementary if provided, along with any tables found."
+        results_dict = {}
 
         with NamedTemporaryFile(dir=".", suffix=".pdf", delete=False) as f:
             f.write(st.session_state["article_file"].getbuffer())
-            images_dict["article"] = pdf_analysis(f.name)
+            results_dict["article"] = pdf_analysis(f.name)
         os.remove(f.name)
 
         if st.session_state["supplement_file"] is not None:
             with NamedTemporaryFile(dir=".", suffix=".pdf", delete=False) as f:
                 f.write(st.session_state["supplement_file"].getbuffer())
-                images_dict["supplement"] = pdf_analysis(f.name)
+                results_dict["supplement"] = pdf_analysis(f.name)
             os.remove(f.name)
-        return "```json\n" + str(images_dict) + "\n```"
+        
+        return "```json\n" + str(results_dict) + "\n```"
 
     @tool("llm_extractor")
     def llm_extractor(file_name: str) -> str:

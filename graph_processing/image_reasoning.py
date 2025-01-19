@@ -57,8 +57,15 @@ def extract_concentration_range(image) -> ImageAnalysis:
     The function uses GPT-4V to analyze various types of images (graphs, tables, TEM images) and returns structured data.
     """
     
+    # Load and encode example image
+    with open("graph_processing/conc_example.jpg", "rb") as image_file:
+        example_base64 = base64.b64encode(image_file.read()).decode("utf-8")
+    
     system_prompt = """
     Analyze the image and extract information about nanozyme properties, concentrations and kinetic parameters.
+    
+    Here is an example of a concentration graph that you should look for:
+    <image>data:image/jpeg;base64,{example_base64}</image>
     
     Pay attention to:
     1. Type of image (concentration_graph, kinetic_table, tem_image, etc.)
@@ -93,9 +100,9 @@ def extract_concentration_range(image) -> ImageAnalysis:
     # Initialize OpenAI client
     client = OpenAI()
     
-    # Prepare message
+    # Prepare message with formatted system prompt
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": system_prompt.format(example_base64=example_base64)},
         {
             "role": "user", 
             "content": [
@@ -120,4 +127,51 @@ def extract_concentration_range(image) -> ImageAnalysis:
             image_type="error",
             description=f"Failed to parse image: {str(e)}"
         )
+
+def extract_table_markdown(image) -> Optional[str]:
+    """
+    Convert table image to markdown format using GPT-4V.
+    Returns markdown string or None if conversion failed.
+    """
+    # Convert image to base64
+    if isinstance(image, str):
+        base64_image = pdf_page_to_base64(image)
+    else:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    
+    system_prompt = """
+    You are a specialized assistant that converts tables from images into markdown format.
+    - Create proper markdown tables with aligned columns
+    - Preserve all headers and data exactly as shown
+    - Include any table captions or notes
+    - Maintain units and formatting
+    - If the image is not a table, return "NOT_A_TABLE"
+    """
+    
+    client = OpenAI()
+    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Convert this table to markdown format."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+            ]
+        }
+    ]
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=1000
+        )
+        result = response.choices[0].message.content
+        return None if result == "NOT_A_TABLE" else result
+    except Exception as e:
+        print(f"Failed to convert table: {str(e)}")
+        return None
 
