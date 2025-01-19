@@ -98,38 +98,40 @@ def process_images_with_yolo(images, model_path):
     results = model(images)
 
     for i, res in enumerate(results):
-        cropped_images = crop_images(images[i], res.boxes)
+        cropped_images = crop_images(images[i], res.boxes) 
         processed_images.extend(cropped_images)
 
     return processed_images
 
 
 # Функция для анализа PDF и получения описаний
-def pdf_analysis(pdf_path, yolo_model_path = None):
+def pdf_analysis(pdf_path, yolo_model_path = YOLO_PATH):
     """
     Analyze PDF file and extract structured information about nanozymes from images.
     Returns a dictionary with analysis results for each page containing relevant information.
     """
     image_pages = extract_image_pages(pdf_path)
-    analyses = {}
     images = []
 
     for page_num in image_pages:
         image = get_page_image(pdf_path, page_num)
         images.append(image)
-
+    print('IMAGES_____',images)
+    print(yolo_model_path)
     if yolo_model_path:
-        images = process_images_with_yolo(images, yolo_model_path=YOLO_PATH)
+        images = process_images_with_yolo(images, model_path=YOLO_PATH)
+        print('YOLO_________',images)
+    analyses = []
 
     for i, image in enumerate(images):
         analysis = extract_concentration_range(image)
-        
+        print('analysis',analysis)
         # Only include pages with relevant nanozyme information
         if analysis.image_type != "error" and (
             analysis.concentration_data or 
             analysis.kinetic_parameters or 
             (analysis.nanozyme_properties and any(v is not None for v in analysis.nanozyme_properties.dict().values()))
         ):
-            analyses[i] = analysis.dict()
+            analyses.append(analysis.dict())
 
     return analyses

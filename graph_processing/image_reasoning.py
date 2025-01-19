@@ -112,7 +112,8 @@ def extract_concentration_range(image) -> ImageAnalysis:
             messages=messages,
             response_format=ImageAnalysis
         )
-        return completion
+        # Extract ImageAnalysis object from ParsedChatCompletion
+        return completion.choices[0].message.parsed
     except Exception as e:
         # If parsing fails, return a basic analysis indicating an error
         return ImageAnalysis(
