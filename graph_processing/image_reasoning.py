@@ -44,7 +44,7 @@ class NanozymeProperties(BaseModel):
     surface_chemistry: Optional[str] = Field(None, description="Surface modification")
 
 class ImageAnalysis(BaseModel):
-    image_type: str = Field(description="Type of image (concentration_graph, kinetic_table, tem_image, etc.)")
+    image_type: str = Field(description="Type of image (concentration_graph)")
     nanozyme_properties: Optional[NanozymeProperties] = Field(None, description="Properties of nanozyme if mentioned")
     concentration_data: Optional[List[ConcentrationData]] = Field(None, description="Concentration data if present")
     kinetic_parameters: Optional[List[KineticParameters]] = Field(None, description="Kinetic parameters if present")
@@ -54,7 +54,7 @@ def extract_concentration_range(image) -> ImageAnalysis:
     """
     Analyze image and extract structured information about nanozyme properties, concentrations and kinetic parameters.
     
-    The function uses GPT-4V to analyze various types of images (graphs, tables, TEM images) and returns structured data.
+    The function uses GPT-4V to analyze various types of images (graphs) and returns structured data.
     """
     
     # Load and encode example image
@@ -64,26 +64,30 @@ def extract_concentration_range(image) -> ImageAnalysis:
     system_prompt = """
     Analyze the image and extract information about nanozyme properties, concentrations and kinetic parameters.
     
+    IMPORTANT: Only analyze concentration vs velocity plots or kinetic measurements. All other types of graphs should be ignored completely.
+    
     Here is an example of a concentration graph that you should look for:
     <image>data:image/jpeg;base64,{example_base64}</image>
     
     Pay attention to:
-    1. Type of image (concentration_graph, kinetic_table, tem_image, etc.)
-    2. For concentration graphs:
-       - Look for actual experimental points (dots/squares with error bars)
+    1. Type of image - MUST be a concentration vs velocity plot showing:
+       - Concentration (mM) on X-axis 
+       - Reaction VELOCITY (v) on Y-axis
+       - Experimental data points (dots/squares with error bars)
+       - Direct plot (not reciprocal/transformed data)
+    
+    2. For valid concentration graphs only:
        - Find leftmost (C_min) and rightmost (C_max) points on concentration axis
        - Identify reaction type and co-substrate concentration
        - Check if points at x=0 are present
-       - Note typical ranges: TMB (0-1.0 mM), H2O2 (0-100 mM)
+       - Note typical units: μM (1000 μM = 1 mM), mM
+       - Look for velocity (v) on Y-axis
+       
     3. For kinetic tables:
        - Extract Km, Vmax, kcat values with units
        - Match parameters to specific reaction types
-    4. For TEM/SEM/other images:
-       - Note nanozyme formula, activity type, crystal system
-       - Extract size parameters (length, width, depth, diameter)
-       - Note surface modifications if mentioned
     
-    Ignore:
+    Strictly ignore and do not analyze:
     - Lineweaver-Burk plots (1/v vs 1/[S])
     - Non-kinetic data
     - Images without nanozyme-related information
@@ -165,7 +169,7 @@ def extract_table_markdown(image) -> Optional[str]:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-2024-11-20",
             messages=messages,
             max_tokens=1000
         )

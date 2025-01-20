@@ -41,43 +41,6 @@ def get_page_image(pdf_path, page_num):
     return image
 
 
-# Функция для анализа изображения и получения текстового описания с помощью OpenAI API
-def analyze_image(image):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_image_path = f"{temp_dir}/temp_image.png"
-        image.save(temp_image_path, format="PNG")
-        image_documents = SimpleDirectoryReader(temp_dir).load_data()
-        query = (
-            "Extract relevant kinetic data from various types of visual materials (e.g., graphs, tables, diagrams) commonly found in the context of enzyme-like nanozyme activity studies. "
-            "These may include steady-state kinetic plots, Michaelis–Menten plots, Lineweaver–Burk plots, reaction velocity graphs, or concentration versus rate graphs, as well as tables summarizing key kinetic parameters."
-            "The model should first identify the type of visual representation. If a graph is detected, focus on graphs where concentration is plotted along the X-axis and reaction velocity is on the Y-axis. "
-            "Make sure to identify the Cmin (lower left point) and Cmax (upper right point) on the X-axis for concentration ranges (typically in mM or μM). "
-            "Pay attention to captions or labels that mention kinetic analysis, Michaelis-Menten, Lineweaver–Burk, or steady-state kinetics, to confirm the relevance of the graph."
-            "Key terms and phrases to look for include: "
-            "'Steady-state kinetic', 'Lineweaver–Burk plot', 'Michaelis-Menten model', 'reaction velocities vs. substrate concentration', "
-            "'Kinetic analysis for PBNPs', 'Peroxidase-like activity', 'Michaelis–Menten behavior', 'substrate concentration change', 'nanoparticles'. "
-            "If a table is detected, extract kinetic parameters such as Km, Vmax, and Kcat, paying close attention to units (e.g., mM, μM). Tables can provide summarized values that may not always be directly interpretable from graphs, so prioritize extracting exact values when available. "
-            "When encountering diagrams or non-relevant visual data (e.g., non-kinetic graphs or diagrams), label them as such and pass them for further analysis but do not attempt to extract concentrations from them."
-            "If neither graphs nor tables are detected, the model should flag the image as potentially irrelevant to the kinetic analysis task and move to the next one. "
-            "In case the image appears to be part of a different section of the study (e.g., materials, methods, or background information), mark it accordingly."
-            "Additionally, when working in conjunction with the main agent, ensure that any relevant kinetic context derived from the article's text (e.g., nanoparticle type, specific formulas, or reaction conditions) is passed along. "
-            "Use this context to guide the search for specific kinetic information within graphs or tables. If kinetic parameters or related data (e.g., specific substrate concentrations or reaction rates) are not found, flag this as a missing data point and request further investigation."
-            "For inappropriate or unusable images (e.g., 1/[H2O2] or 1/[substrate]), mark them as non-relevant to the current task and continue the analysis. Avoid graphs that use inverse concentrations or other less directly interpretable data."
-        )
-
-        openai_mm_llm = OpenAIMultiModal(
-            model="gpt-4o",
-            api_key=OPENAI_API_KEY,
-            temperature=0.0,
-        )
-
-        response = openai_mm_llm.complete(
-            prompt=query,
-            image_documents=image_documents,
-        )
-    return response
-
-
 # Функция для обрезки изображения по границам YOLO
 def crop_images(image, boxes):
     cropped_images = []
