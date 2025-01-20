@@ -53,21 +53,33 @@ def crop_images(image, boxes):
 
 # Функция для обработки изображений с помощью YOLO и обрезки по границам
 def process_images_with_yolo(images, model_path):
+    if not images:  # Check for empty list
+        return [], []
+        
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = YOLO(model_path)
     model.to(device=device)
 
     processed_images = []
     table_images = []
-    results = model(images)
+    
+    try:
+        results = model(images)
 
-    for i, res in enumerate(results):
-        for box, cls in zip(res.boxes, res.boxes.cls):
-            cropped_image = crop_images(images[i], [box])[0]
-            if int(cls) == 1:  # Table class
-                table_images.append(cropped_image)
-            else:
-                processed_images.append(cropped_image)
+        for i, res in enumerate(results):
+            if not res.boxes:  # Skip if no detections
+                continue
+                
+            for box, cls in zip(res.boxes, res.boxes.cls):
+                cropped_image = crop_images(images[i], [box])[0]
+                if int(cls) == 1:  # Table class
+                    table_images.append(cropped_image)
+                else:
+                    processed_images.append(cropped_image)
+
+    except Exception as e:
+        print(f"Error in YOLO processing: {str(e)}")
+        return [], []
 
     return processed_images, table_images
 
@@ -89,24 +101,33 @@ def pdf_analysis(pdf_path, yolo_model_path = YOLO_PATH):
     analyses = []
     tables = []
     
-    if yolo_model_path:
-        graph_images, table_images = process_images_with_yolo(images, model_path=YOLO_PATH)
-        
-        # Process graphs
-        for image in graph_images:
-            analysis = extract_concentration_range(image)
-            if analysis.image_type != "error" and (
-                analysis.concentration_data or 
-                analysis.kinetic_parameters or 
-                (analysis.nanozyme_properties and any(v is not None for v in analysis.nanozyme_properties.dict().values()))
-            ):
-                analyses.append(analysis.dict())
-        
-        # Process tables
-        for table_image in table_images:
-            table_markdown = extract_table_markdown(table_image)
-            if table_markdown:
-                tables.append(table_markdown)
+    if yolo_model_path and images:  # Check if we have any images to process
+        try:
+            graph_images, table_images = process_images_with_yolo(images, model_path=YOLO_PATH)
+            
+            # Process graphs
+            for image in graph_images:
+                analysis = extract_concentration_range(image)
+                if analysis.image_type != "error" and (
+                    analysis.concentration_data or 
+                    analysis.kinetic_parameters or 
+                    (analysis.nanozyme_properties and any(v is not None for v in analysis.nanozyme_properties.dict().values()))
+                ):
+                    analyses.append(analysis.dict())
+            
+            # Process tables
+            for table_image in table_images:
+                table_markdown = extract_table_markdown(table_image)
+                if table_markdown:
+                    tables.append(table_markdown)
+        except Exception as e:
+            print(f"Error processing images: {str(e)}")
+            # Return empty results if processing fails
+            return {
+                "analyses": [],
+                "tables": [],
+                "error": str(e)
+            }
     
     return {
         "analyses": analyses,
