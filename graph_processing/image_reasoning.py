@@ -68,7 +68,13 @@ def extract_concentration_range(image) -> ImageAnalysis:
     
     Here is an example of a concentration graph that you should look for:
     <image>data:image/jpeg;base64,{example_base64}</image>
-    
+    TMB (a): Concentration range is from 100 to 1300 µM (from 0.1 to 1.3 mM).
+    H₂O₂ (b): Concentration range is from 10 to 130 mM.
+    ABTS (c): Concentration range is from 50 to 750 µM (from 0.05 to 0.75 mM).
+    H₂O₂ (d): Concentration range is from 10 to 130 mM.
+
+    We need to look at the lines and find the concentration range for each of the substrates.
+        
     Pay attention to:
     1. Type of image - MUST be a concentration vs velocity plot showing:
        - Concentration (mM) on X-axis 
