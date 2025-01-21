@@ -27,10 +27,9 @@ def pdf_page_to_base64(pdf_path: str, page_number: int) -> str:
 
 class ConcentrationData(BaseModel):
     reaction_type: str = Field(description="Type of reaction (e.g. TMB+H2O2, H2O2+TMB)")
-    c_min: float = Field(description="Minimum concentration value in mM or µM")
-    c_max: float = Field(description="Maximum concentration value in mM or µM")
-    c_unit: str = Field(description="Unit of concentration (mM or µM)")
-    co_substrate_concentration: Optional[float] = Field(None, description="Concentration of co-substrate in mM or µM if specified")
+    c_min: float = Field(description="Minimum concentration value in mM")
+    c_max: float = Field(description="Maximum concentration value in mM")
+    co_substrate_concentration: Optional[float] = Field(None, description="Concentration of co-substrate in mM if specified")
 
 class KineticParameters(BaseModel):
     km: Optional[float] = Field(None, description="Michaelis constant Km in mM")
@@ -65,42 +64,66 @@ def extract_concentration_range(image) -> ImageAnalysis:
     system_prompt = """
     Analyze the image and extract information about nanozyme properties, concentrations and kinetic parameters.
     
-    IMPORTANT: Only analyze concentration vs velocity (also called "v") plots or kinetic measurements. All other types of graphs should be ignored completely.
-    
     Here is an example of a concentration graph that you should look for:
     <image>data:image/jpeg;base64,{example_base64}</image>
-    Result of the analysis EXAMPLE:
-    TMB (a): Concentration range is from 100 to 1300 µM (from 0.1 to 1.3 mM).
-    H₂O₂ (b): Concentration range is from 10 to 130 mM.
-    ABTS (c): Concentration range is from 50 to 750 µM (from 0.05 to 0.75 mM).
-    H₂O₂ (d): Concentration range is from 10 to 130 mM.
-
-
-        
-    Pay attention to:
-    1. Type of image - MUST be a concentration vs velocity (also called "v") plot showing:
-       - We need to look at the lines and find the concentration range for each of the substrates.
-       - Concentration (mM) on X-axis 
-       - Reaction VELOCITY (v) on Y-axis
-       - Experimental data points (dots/squares with error bars)
-       - Direct plot (not reciprocal/transformed data)
     
-    2. For valid concentration graphs only:
+    Pay attention to:
+    1. Type of image (concentration_graph)
+    2. For concentration graphs:
+       - y-axis is velocity (v)
+       - x-axis is concentration (C), units are mM, µM, nM, etc.
+       - Look for actual experimental points (dots/squares with error bars)
        - Find leftmost (C_min) and rightmost (C_max) points on concentration axis
        - Identify reaction type and co-substrate concentration
        - Check if points at x=0 are present
-       - Note typical units: μM (1000 μM = 1 mM), mM
-       - Look for velocity (v) on Y-axis
-       
-    3. For kinetic tables:
-       - Extract Km, Vmax, kcat values with units
-       - Match parameters to specific reaction types
     
-    Strictly ignore and do not analyze:
+    IGNORE OTHER TYPES OF GRAPHS!
+    Ignore also:
     - Lineweaver-Burk plots (1/v vs 1/[S])
     - Non-kinetic data
     - Images without nanozyme-related information
-    """
+    # """
+    
+    # system_prompt = """
+    # Analyze the image and extract information about nanozyme properties, concentrations and kinetic parameters.
+    
+    # IMPORTANT: Only analyze concentration vs velocity (also called "v") plots or kinetic measurements. All other types of graphs should be ignored completely.
+    
+    # Here is an example of a concentration graph that you should look for:
+    # <image>data:image/jpeg;base64,{example_base64}</image>
+
+    # Result of the analysis EXAMPLE:
+    # TMB (a): Concentration range is from 0.1 to 1.3 mM (from 100 to 1300 µM).
+    # H₂O₂ (b): Concentration range is from 10 to 130 mM.
+    # ABTS (c): Concentration range is from 0.05 to 0.75 mM (from 50 to 750 µM).
+    # H₂O₂ (d): Concentration range is from 10 to 130 mM.
+
+
+        
+    # Pay attention to:
+    # 1. Type of image - MUST be a concentration vs velocity (also called "v") plot showing:
+    #    - We need to look at the lines and find the concentration range for each of the substrates.
+    #    - Concentration (mM) on X-axis 
+    #    - Reaction VELOCITY (v) on Y-axis
+    #    - Experimental data points (dots/squares with error bars)
+    #    - Direct plot (not reciprocal/transformed data)
+    
+    # 2. For valid concentration graphs only:
+    #    - Find leftmost (C_min) and rightmost (C_max) points on concentration axis
+    #    - Identify reaction type and co-substrate concentration
+    #    - Check if points at x=0 are present
+    #    - Note typical units: μM (1000 μM = 1 mM), mM
+    #    - Look for velocity (v) on Y-axis
+       
+    # 3. For kinetic tables:
+    #    - Extract Km, Vmax, kcat values with units
+    #    - Match parameters to specific reaction types
+    
+    # Strictly ignore and do not analyze:
+    # - Lineweaver-Burk plots (1/v vs 1/[S])
+    # - Non-kinetic data
+    # - Images without nanozyme-related information
+    # """
     
     # Convert image to base64
     if isinstance(image, str):
