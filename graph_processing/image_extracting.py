@@ -108,7 +108,7 @@ def pdf_analysis(pdf_path, yolo_model_path = YOLO_PATH):
             # Process graphs
             for image in graph_images:
                 analysis = extract_concentration_range(image)
-                if analysis.image_type != "concentration_graph" and (
+                if analysis.image_type == "concentration_graph" and (
                     analysis.concentration_data or 
                     analysis.kinetic_parameters or 
                     (analysis.nanozyme_properties and any(v is not None for v in analysis.nanozyme_properties.dict().values()))
